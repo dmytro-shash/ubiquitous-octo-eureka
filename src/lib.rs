@@ -26,11 +26,20 @@ impl Contract {
         self.crossword_solution = solution;
     }
 
-    pub fn guess_solution(&mut self, solution: String) {
-        if solution == self.crossword_solution {
-            env::log_str("You guessed right!")
+    pub fn get_solution(&self) -> String {
+        self.crossword_solution.clone()
+    }
+    
+    pub fn guess_solution(&mut self, solution: String) -> bool {
+        let hashed_input = env::sha256(solution.as_bytes());
+        let hashed_input_hex = hex::encode(&hashed_input);
+    
+        if hashed_input_hex == self.crossword_solution {
+            env::log_str("You guessed right!");
+            true
         } else {
-            env::log_str("Try again.")
+            env::log_str("Try again.");
+            false
         }
     }
 }
@@ -68,12 +77,8 @@ mod tests {
             "fb699b30bf500f810f8cd83816a85c172dd760208b929d0dd25703578bfe669b".to_string(),
         );
 
-        let mut guess_result = contract.guess_solution("wrong answer here".to_string());
+        let mut _guess_result = contract.guess_solution("wrong answer here".to_string());
         assert_eq!(get_logs(), ["Try again."], "Expected a failure log.");
-
-        
-
-
     }
 
     #[test]
