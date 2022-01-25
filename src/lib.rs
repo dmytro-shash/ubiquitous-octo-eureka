@@ -1,15 +1,38 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::near_bindgen;
+use near_sdk::{env, near_bindgen};
+
+const PUZZLE_NUMBER: u8 = 1;
 
 #[near_bindgen]
 #[derive(Default, BorshDeserialize, BorshSerialize)]
 pub struct Contract {
-    // SETUP CONTRACT STATE
+    crossword_solution: String,
 }
 
 #[near_bindgen]
 impl Contract {
-    // ADD CONTRACT METHODS HERE
+    #[init]
+    pub fn new(solution: String) -> Self {
+        Self {
+            crossword_solution: solution,
+        }
+    }
+
+    pub fn get_pazzle_number(&self) -> u8 {
+        PUZZLE_NUMBER
+    }
+
+    pub fn set_solution(&mut self, solution: String) {
+        self.crossword_solution = solution;
+    }
+
+    pub fn guess_solution(&mut self, solution: String) {
+        if solution == self.crossword_solution {
+            env::log_str("You guessed right!")
+        } else {
+            env::log_str("Try again.")
+        }
+    }
 }
 
 /*
@@ -33,6 +56,33 @@ mod tests {
         builder.predecessor_account_id(predecessor);
         builder
     }
+    #[test]
+    // #[should_panic]
+    fn check_guess_solution() {
+        let alice = AccountId::new_unchecked("alice.testnet".to_string());
 
-    // TESTS HERE
+        let context = get_context(alice);
+        testing_env!(context.build());
+
+        let mut contract = Contract::new(
+            "fb699b30bf500f810f8cd83816a85c172dd760208b929d0dd25703578bfe669b".to_string(),
+        );
+
+        let mut guess_result = contract.guess_solution("wrong answer here".to_string());
+        assert_eq!(get_logs(), ["Try again."], "Expected a failure log.");
+
+        
+
+
+    }
+
+    #[test]
+    fn debug_get_hash() {
+        testing_env!(VMContextBuilder::new().build());
+
+        let debug_solution = "georzynskyi";
+        let debug_hash_bytes = env::sha256(debug_solution.as_bytes());
+        let debug_hash_string = hex::encode(debug_hash_bytes);
+        println!("Let's debug: {:?}", debug_hash_string);
+    }
 }
