@@ -1,47 +1,118 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{env, near_bindgen};
+use near_sdk::collections::{LookupMap, UnorderedSet};
+use near_sdk::log;
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault, Promise};
 
 const PUZZLE_NUMBER: u8 = 1;
 
+// 5 Ⓝ in yoctoNEAR
+const PRIZE_AMOUNT: u128 = 5_000_000_000_000_000_000_000_000;
+
 #[near_bindgen]
-#[derive(Default, BorshDeserialize, BorshSerialize)]
-pub struct Contract {
-    crossword_solution: String,
+#[derive(PanicOnDefault, BorshDeserialize, BorshSerialize)]
+pub struct CrossWord {
+    owner_id: AccountId,
+    puzzles: LookupMap<String, Puzzle>,
+    unsolved_puzzles: UnorderedSet<String>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Debug)]
+pub struct Puzzle {
+    status: PuzzleStatus,
+    answer: Vec<Answer>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Answer {
+    num: u8,
+    start: CoordinatePair,
+    direction: AnswerDirection,
+    lenght: u8,
+    clue: String,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct CoordinatePair {
+    x: u8,
+    y: u8,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct JsonPuzzle {
+    /// The human-readable (not in bytes) hash of the solution
+    solution_hash: String, // ⟵ this field is not contained in the Puzzle struct
+    status: PuzzleStatus,
+    answer: Vec<Answer>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum AnswerDirection {
+    Across,
+    Down,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Deserialize, Serialize, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum PuzzleStatus {
+    Unsolved,
+    Solved { memo: String },
 }
 
 #[near_bindgen]
-impl Contract {
+impl CrossWord {
     #[init]
-    pub fn new(solution: String) -> Self {
+    pub fn new(owner_id: AccountId) -> Self {
         Self {
-            crossword_solution: solution,
+            owner_id,
+            puzzles: LookupMap::new(b"c"),
+            unsolved_puzzles: UnorderedSet::new(b"u"),
         }
     }
-
     pub fn get_pazzle_number(&self) -> u8 {
         PUZZLE_NUMBER
     }
 
-    pub fn set_solution(&mut self, solution: String) {
-        self.crossword_solution = solution;
-    }
+    // pub fn set_solution(&mut self, solution: String) {
+    //     self.crossword_solution = solution;
+    // }
 
-    pub fn get_solution(&self) -> String {
-        self.crossword_solution.clone()
-    }
-    
-    pub fn guess_solution(&mut self, solution: String) -> bool {
+    // pub fn get_solution(&self) -> String {
+    //     self.crossword_solution.clone()
+    // }
+
+    pub fn submit_solution(&mut self, solution: String, memo: String) {
         let hashed_input = env::sha256(solution.as_bytes());
         let hashed_input_hex = hex::encode(&hashed_input);
-    
-        if hashed_input_hex == self.crossword_solution {
-            env::log_str("You guessed right!");
-            true
-        } else {
-            env::log_str("Try again.");
-            false
+
+        let mut puzzle = self
+            .puzzles
+            .get(&hashed_input_hex)
+            .expect("ERR_NOT_CORRECT_ANSWER");
+
+        puzzle.status = match puzzle.status {
+            PuzzleStatus::Unsolved => PuzzleStatus::Solved { memo: memo.clone() },
+            _ => {
+                env::panic_str("ERR_PUZZLE_SOLVED");
+            }
+        };
+        self.puzzles.insert(&hashed_input_hex, &puzzle);
+
+        self.unsolved_puzzles.remove(&hashed_input_hex);
+
+        log!(
+            "Puzzle with solution hash {} solved, with memo: {}",
+            hashed_input_hex,
+            memo
+        );
+
+        // Transfer the prize money to the winner
+        Promise::new(env::predecessor_account_id()).transfer(PRIZE_AMOUNT);
         }
-    }
 }
 
 /*
@@ -65,21 +136,21 @@ mod tests {
         builder.predecessor_account_id(predecessor);
         builder
     }
-    #[test]
-    // #[should_panic]
-    fn check_guess_solution() {
-        let alice = AccountId::new_unchecked("alice.testnet".to_string());
 
-        let context = get_context(alice);
-        testing_env!(context.build());
+    // #[test]
+    // fn check_guess_solution() {
+    //     let alice = AccountId::new_unchecked("alice.testnet".to_string());
 
-        let mut contract = Contract::new(
-            "fb699b30bf500f810f8cd83816a85c172dd760208b929d0dd25703578bfe669b".to_string(),
-        );
+    //     let context = get_context(alice);
+    //     testing_env!(context.build());
 
-        let mut _guess_result = contract.guess_solution("wrong answer here".to_string());
-        assert_eq!(get_logs(), ["Try again."], "Expected a failure log.");
-    }
+    //     let mut contract = Contract::new(
+    //         "fb699b30bf500f810f8cd83816a85c172dd760208b929d0dd25703578bfe669b".to_string(),
+    //     );
+
+    //     let mut _guess_result = contract.guess_solution("wrong answer here".to_string());
+    //     assert_eq!(get_logs(), ["Try again."], "Expected a failure log.");
+    // }
 
     #[test]
     fn debug_get_hash() {
