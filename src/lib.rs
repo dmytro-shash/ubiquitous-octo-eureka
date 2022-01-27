@@ -1,5 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedSet};
+
 use near_sdk::log;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault, Promise};
@@ -7,6 +8,7 @@ use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault, Promise};
 const PUZZLE_NUMBER: u8 = 1;
 
 // 5 Ⓝ in yoctoNEAR
+
 const PRIZE_AMOUNT: u128 = 5_000_000_000_000_000_000_000_000;
 
 #[near_bindgen]
@@ -20,6 +22,7 @@ pub struct CrossWord {
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct Puzzle {
     status: PuzzleStatus,
+
     answer: Vec<Answer>,
 }
 
@@ -73,6 +76,25 @@ impl CrossWord {
             unsolved_puzzles: UnorderedSet::new(b"u"),
         }
     }
+
+    pub fn new_puzzle(&mut self, solution_hash: String, answers: Vec<Answer>) {
+        assert_eq!(
+            env::predecessor_account_id(),
+            self.owner_id,
+            "Only the owner may call this method"
+        );
+        let existing = self.puzzles.insert(
+            &solution_hash,
+            &Puzzle {
+                status: PuzzleStatus::Unsolved,
+                answer: answers,
+            },
+        );
+
+        assert!(existing.is_none(), "Puzzle with that key already exists");
+        self.unsolved_puzzles.insert(&solution_hash);
+    }
+
     pub fn get_pazzle_number(&self) -> u8 {
         PUZZLE_NUMBER
     }
@@ -88,6 +110,8 @@ impl CrossWord {
     pub fn submit_solution(&mut self, solution: String, memo: String) {
         let hashed_input = env::sha256(solution.as_bytes());
         let hashed_input_hex = hex::encode(&hashed_input);
+
+        let answer_pk = env::signer_account_pk();
 
         let mut puzzle = self
             .puzzles
@@ -110,9 +134,9 @@ impl CrossWord {
             memo
         );
 
-        // Transfer the prize money to the winner
-        Promise::new(env::predecessor_account_id()).transfer(PRIZE_AMOUNT);
-        }
+        // Delete old function call key
+        Promise::new(env::current_account_id()).delete_key(answer_pk);
+    }
 }
 
 /*
@@ -133,6 +157,7 @@ mod tests {
     // provide a `predecessor` here, it'll modify the default context
     fn get_context(predecessor: AccountId) -> VMContextBuilder {
         let mut builder = VMContextBuilder::new();
+
         builder.predecessor_account_id(predecessor);
         builder
     }
